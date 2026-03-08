@@ -1,282 +1,272 @@
-# ClaudeToToy
+# ToyBridge
 
-> Control BLE intimate toys with Claude AI or OpenClaw — reverse-engineered Cachito protocol
+> Reverse-engineer any BLE toy's protocol, then control it with AI.
 
-This project runs a local bridge server on your Mac that translates AI instructions into BLE commands for Cachito-protocol toys (Venus, SK, DX, SK4, etc.).
+## Do You Even Need This?
 
-**Two ways to use it:**
+**Check first:** Is your device already supported by [Buttplug.io](https://iostindex.com/?filter0BrandName=Lovense,We-Vibe,Satisfyer,Kiiroo,Lelo)?
 
-| | Claude (claude.ai) | OpenClaw |
-|---|---|---|
-| How Claude talks to the server | MCP Custom Connector (cloud) | Skill file + curl (local) |
-| Requires | Pro account + Cloudflare Tunnel | OpenClaw install |
-| Works remotely? | Yes — from anywhere | Local only |
-| Setup complexity | Higher | Lower |
+If yes — **you don't need to reverse-engineer anything.** Use [Intiface Central](https://intiface.com/central/) + [buttplug-mcp](https://github.com/ConAcademy/buttplug-mcp) and you're done. It supports 700+ devices (Lovense, We-Vibe, Satisfyer, Kiiroo, etc.) out of the box, cross-platform. We even have an OpenClaw skill for it: [`4-bridge/clawhub-skill/intiface-control/`](4-bridge/clawhub-skill/intiface-control/).
+
+**This project is for devices that Buttplug.io does NOT support** — obscure brands, China-only toys, devices with proprietary protocols that nobody has cracked yet. Like the Cachito/小猫爪 Venus vibrator we used as our case study.
+
+---
+
+## What This Project Does
+
+1. **A BLE reverse-engineering toolkit** — scripts to discover, scan, explore, and crack the protocol of an unknown BLE device
+2. **An AI bridge server** — once you know the protocol, connect the toy to [Claude](https://claude.ai) or [OpenClaw](https://openclaw.ai) so an AI can control it
+
+The whole process is documented using the **Venus (小猫爪/Cachito)** vibrator as a real-world case study.
 
 ```
-──── Option A: Claude ────────────────────────────────────────
-claude.ai ──► Cloudflare Tunnel ──► server.py:8888 ──► BLE ──► Toy
-                                       (/mcp endpoint)
-
-──── Option B: OpenClaw ──────────────────────────────────────
-OpenClaw ─────────────────────────► server.py:8888 ──► BLE ──► Toy
-                    (curl → /vibrate, /stop, /status)
+┌─────────────────────────────────────────────────────┐
+│                  Your journey                       │
+│                                                     │
+│  Unknown BLE toy                                    │
+│       ↓                                             │
+│  1-discover/  →  Find the device in BLE scan        │
+│       ↓                                             │
+│  2-reverse/   →  Explore GATT, sniff packets,       │
+│                  brute-force commands                │
+│       ↓                                             │
+│  3-control/   →  Crack the protocol, verify locally │
+│       ↓                                             │
+│  4-bridge/    →  Connect to Claude or OpenClaw       │
+│                                                     │
+└─────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## How It Works
+## The Venus Case Study
 
-Most people assume BLE toys are controlled via GATT writes (connect → write characteristic → device responds). After reverse-engineering the Cachito Android APK with [jadx](https://github.com/skylot/jadx), I discovered these devices work completely differently:
+Most people assume BLE toys use GATT writes (connect → write to a characteristic → device responds). We tried that first — see `2-reverse/` for every script we used. All GATT approaches failed.
 
-**The phone broadcasts BLE advertisements. The toy listens passively.**
+After reverse-engineering the Cachito Android APK with [jadx](https://github.com/skylot/jadx), we discovered something unexpected:
 
-The command is encoded as a **128-bit Service UUID** in the advertisement packet:
+**The phone broadcasts BLE advertisements. The toy passively listens.**
+
+The command is encoded as a 128-bit Service UUID:
 
 ```
 71000182-0400-cbc5-040a-3700000000cd
 │   │ │  │    │    │    │            │
 │   │ │  │    │    │    └─ intensity └─ checksum
-│   │ │  │    │    └─ device pairing ID (####)
+│   │ │  │    │    └─ device pairing ID
 │   │ │  │    └─ command code
 │   │ └──┘ random sequence byte
-│   └─ device type (01 for Venus)
+│   └─ device type
 └─ protocol header
 ```
 
-This means no GATT connection, no OS-level pairing — any device that can advertise BLE service UUIDs can send commands.
+No GATT connection. No OS-level pairing. Any device that can broadcast BLE service UUIDs can send commands.
+
+Full protocol docs: [`docs/protocol.md`](docs/protocol.md)
 
 ---
 
-## Supported Devices
+## Step 1 — Discover Your Device
 
-Tested with the **Venus (小猫爪)** device. Other Cachito-protocol devices share the same mechanism with different parameters:
+> *"I have a BLE toy. Which device is it in the scan?"*
 
-| Device | Type byte | Vibrate param1 | Stop param1 |
-|--------|-----------|----------------|-------------|
-| Venus  | `01`      | `040a`         | `0601`      |
-| SK     | `02`      | `0302`         | different   |
-| DX     | `03`      | `0100`         | different   |
-| SK4    | `17`      | `0100`         | different   |
+```bash
+uv run 1-discover/realtime_scan.py    # watch devices appear in real-time
+uv run 1-discover/scan_device.py      # compare scan with toy ON vs OFF
+uv run 1-discover/auto_explore.py     # auto-connect strongest signals, look for writable characteristics
+```
+
+| Script | What it does |
+|--------|-------------|
+| `realtime_scan.py` | Real-time BLE listener — turn on your toy and see what appears |
+| `scan_device.py` | Differential scan — scans with toy ON, then OFF, shows which devices disappeared |
+| `auto_explore.py` | Connects to top 10 by signal strength, lists GATT services and writable characteristics |
 
 ---
 
-## Part 1 — One-Time Hardware Setup
+## Step 2 — Reverse-Engineer the Protocol
 
-This section is the same regardless of whether you use Claude or OpenClaw.
+> *"I found the device. How do I control it?"*
 
-### Requirements
+```bash
+uv run 2-reverse/connect_venus.py     # connect and dump full GATT service tree
+uv run 2-reverse/explore_venus.py     # explore + write test on every writable characteristic
+uv run 2-reverse/hold_venus.py        # occupy BLE connection to verify device identity
+uv run 2-reverse/bruteforce_test.py   # try common BLE command formats (single byte, Lovense, IoT, ...)
+uv run 2-reverse/replay_test.py       # replay captured auth tokens + control commands
+uv run 2-reverse/test_auth.py         # attempt to unlock write-protected characteristics
+uv run 2-reverse/parse_pklg.py        # parse Apple sysdiagnose BLE packet capture (.pklg)
+uv run 2-reverse/analyze_protocol.py  # extract and analyze command sequences from capture
+```
 
-- **Mac** with Bluetooth (Windows/Linux not supported — requires macOS CoreBluetooth)
-- A **Cachito-protocol BLE toy**
-- The **Cachito app** on iPhone or Android (needed once, to capture your device ID)
+| Script | What it does |
+|--------|-------------|
+| `connect_venus.py` | Connect to known device, list all GATT services/characteristics with values |
+| `explore_venus.py` | Venus-specific explorer — tries writing 0x01 to every writable characteristic |
+| `hold_venus.py` | Occupy the BLE connection — if Cachito can't connect while Mac is holding, it's your toy |
+| `bruteforce_test.py` | Try dozens of common BLE command formats (single byte, ASCII, IoT headers, etc.) |
+| `replay_test.py` | Replay auth tokens and control commands captured from HCI packet log |
+| `test_auth.py` | Try to unlock write-protected characteristics by writing auth tokens first |
+| `parse_pklg.py` | Parse Apple PacketLogger (.pklg) files from sysdiagnose to extract ATT writes |
+| `analyze_protocol.py` | Detailed analysis of all ATT events — group by handle, find patterns |
+
+For Venus, all GATT approaches failed → led to APK reverse-engineering → discovered the BLE advertising protocol.
+
+---
+
+## Step 3 — Verify Locally
+
+> *"I cracked the protocol. Let me test it."*
+
+For Cachito-protocol devices:
+
+### Capture your Device ID
+
+```bash
+uv run 3-control/sniff_cachito.py
+```
+
+Open the Cachito app on your phone and tap vibrate. The sniffer captures the command UUID and extracts the 4-character device pairing ID (e.g. `cbc5`).
+
+### Configure
+
+Edit `4-bridge/ble_worker.py` line 14:
+```python
+DEVICE_ID = "cbc5"  # ← your value
+```
+
+Also edit `3-control/control_venus.py` line 14 with the same value.
+
+### Test
+
+```bash
+uv run 3-control/control_venus.py vibrate 50   # 50% intensity
+uv run 3-control/control_venus.py stop
+uv run 3-control/control_venus.py demo         # ramp up/down
+```
+
+If the toy responds, you're ready for AI control.
+
+---
+
+## Step 4 — Connect to AI
+
+> *"It works. Now let an AI control it."*
+
+### Option A: Claude (claude.ai)
+
+```
+claude.ai → Cloudflare Tunnel → server.py:8888 → BLE → Toy
+```
+
+**Requirements:** Claude Pro account + [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+
+**Terminal 1 — Start the server:**
+```bash
+uv run 4-bridge/server.py
+```
+
+**Terminal 2 — Start the tunnel:**
+```bash
+brew install cloudflare/cloudflare/cloudflared
+cloudflared tunnel --url http://localhost:8888 --protocol http2
+```
+
+Note the `https://xxxx.trycloudflare.com` URL.
+
+**Connect Claude:**
+1. Go to [claude.ai](https://claude.ai) → Settings → Connectors → Add Custom Connector
+2. URL: `https://xxxx.trycloudflare.com/mcp`
+3. Open a new conversation
+
+Claude now has: `vibrate(intensity)`, `stop()`, `pattern(name)`, `status()`
+
+Try: *"Vibrate at 50% for 5 seconds then stop"*
+
+> Tunnel URL changes on every restart. For a permanent URL, set up a [named tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/) with your own domain.
+
+### Option B: OpenClaw
+
+```
+OpenClaw → curl → server.py:8888 → BLE → Toy
+```
+
+**Requirements:** [OpenClaw](https://openclaw.ai) installed on your Mac
+
+**Start the server:**
+```bash
+uv run 4-bridge/server.py
+```
+
+**Install the skill:**
+```bash
+cp -r 4-bridge/clawhub-skill/venus-ble-vibrator ~/.openclaw/skills/
+```
+
+Or ask OpenClaw: `install skill venus-ble-vibrator`
+
+Then just talk to OpenClaw: *"Vibrate at 60%"*, *"Run the wave pattern"*, *"Stop"*
+
+---
+
+## Requirements
+
+- **macOS** with Bluetooth (CoreBluetooth required — no Windows/Linux support)
 - [uv](https://docs.astral.sh/uv/) — Python package manager
-
-### Step 1 — Install
+- Python 3.12+
+- A BLE toy to reverse-engineer
 
 ```bash
 git clone https://github.com/AmandaClarke61/toybridge
 cd toybridge
-curl -LsSf https://astral.sh/uv/install.sh | sh   # install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh   # install uv if needed
 uv sync
 ```
-
-### Step 2 — Capture your Device ID
-
-Every Cachito app install generates a random 4-character hex **device pairing ID**. You need to capture it once.
-
-1. Power on your toy
-2. Run the sniffer:
-   ```bash
-   uv run sniff_cachito.py
-   ```
-3. Open Cachito on your phone and **control the toy** (tap vibrate, change intensity, stop)
-4. You'll see output like:
-   ```
-   [SERVICE UUID CMD] 71000182-0400-cbc5-040a-3700000000cd
-     device_type: 0x01
-     #### (device_id): cbc5  ← SAVE THIS!
-   ```
-5. Note the **4-character device ID** (e.g. `cbc5`) and **device type** (e.g. `0x01`)
-6. Press `Ctrl+C` to stop
-
-> **Nothing appearing?** Make sure Cachito is actively sending commands (actually tap buttons, don't just open the app). Bluetooth must be on.
-
-> **First run:** macOS will ask for Bluetooth permission — click **Allow**.
-
-### Step 3 — Configure
-
-Edit **both** files and replace `DEVICE_ID` with your captured value:
-
-**`ble_worker.py`** (line 14) and **`control_venus.py`** (line 14):
-```python
-DEVICE_ID = "cbc5"  # ← replace with your value
-```
-
-**Non-Venus device?** Also update the device type and params in `ble_worker.py`:
-```python
-0x01,        # device type byte — change to match your device (see table above)
-0x04, 0x0a,  # vibrate param1 — change to match your device
-0x06, 0x01,  # stop param1 — change to match your device
-```
-
-### Step 4 — Verify locally
-
-```bash
-uv run control_venus.py vibrate 50   # 50% intensity
-uv run control_venus.py stop
-uv run control_venus.py demo         # ramp up/down demo
-```
-
-If the toy responds, hardware setup is complete. Proceed to whichever connection method you want below.
-
----
-
-## Part 2A — Connect with Claude (claude.ai)
-
-**Requirements:** claude.ai **Pro account** (Custom Connectors are a Pro feature) + internet connection
-
-### Step 1 — Install Cloudflare Tunnel
-
-```bash
-brew install cloudflare/cloudflare/cloudflared
-```
-
-### Step 2 — Start the server
-
-**Terminal 1 — MCP Server:**
-```bash
-uv run server.py
-```
-You should see `[BLE Worker] 就绪`. Keep this running.
-
-**Terminal 2 — Cloudflare Tunnel:**
-```bash
-cloudflared tunnel --url http://localhost:8888 --protocol http2
-```
-Note the `https://xxxx.trycloudflare.com` URL in the output.
-
-### Step 3 — Add to claude.ai
-
-1. Go to [claude.ai](https://claude.ai)
-2. **Settings → Connectors → Add Custom Connector**
-3. URL: `https://xxxx.trycloudflare.com/mcp`
-4. Save, then **open a new conversation**
-
-Claude now has access to:
-- `vibrate(intensity)` — set vibration 0–100%
-- `stop()` — stop immediately
-- `pattern(name)` — preset patterns: `pulse`, `wave`, `tease`
-- `status()` — check current state
-
-Try: *"Vibrate at 50% for 5 seconds then stop"*
-
-> **Tunnel URL changes on every restart.** When you restart `cloudflared`, go back to Settings → Connectors and update the URL. For a permanent URL, set up a [named tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/) with your own domain.
-
----
-
-## Part 2B — Connect with OpenClaw
-
-**Requirements:** [OpenClaw](https://openclaw.ai) installed on your Mac
-
-The server exposes a local REST API on port 8888. OpenClaw calls it directly via curl — no tunnel needed.
-
-### Step 1 — Start the server
-
-```bash
-uv run server.py
-```
-You should see `[BLE Worker] 就绪`. Keep this running.
-
-### Step 2 — Install the OpenClaw skill
-
-```bash
-cp -r clawhub-skill/venus-ble-vibrator ~/.openclaw/skills/
-```
-
-Or ask OpenClaw: `install skill venus-ble-vibrator` (if you've published the skill to ClawHub).
-
-### Step 3 — Use it
-
-Open OpenClaw and say things like:
-- *"Vibrate at 60%"*
-- *"Run the wave pattern for 30 seconds"*
-- *"Stop"*
-
-OpenClaw calls the local server at `http://localhost:8888`. If OpenClaw runs in Docker, it uses `http://host.docker.internal:8888` automatically (configured in the skill file).
 
 ---
 
 ## Troubleshooting
 
-**Toy doesn't respond to `control_venus.py`**
-- Check `DEVICE_ID` matches what `sniff_cachito.py` captured (in both `ble_worker.py` and `control_venus.py`)
-- Make sure the toy is on and in range
-
-**`sniff_cachito.py` shows nothing**
-- Cachito must be actively sending commands — actually tap the vibrate button, don't just open the app
-- Check Mac Bluetooth is on; click Allow on the permissions prompt if it appears
-
-**`ERROR: BT not ready`**
-- System Settings → Privacy & Security → Bluetooth → enable access for your terminal app
-- Make sure Bluetooth is enabled on your Mac
-
-**`uv: command not found`**
-- Restart your terminal after installing uv (it adds to `~/.local/bin`)
-
-**Claude: "no tools available"**
-- Both `server.py` and `cloudflared` must be running
-- Connector URL must end with `/mcp`
-- Try removing and re-adding the Connector in claude.ai settings
-
-**OpenClaw: `connection refused`**
-- Make sure `server.py` is still running
-- Check whether OpenClaw runs in Docker (use `host.docker.internal`) or natively (use `localhost`)
+| Problem | Fix |
+|---------|-----|
+| `uv: command not found` | Restart terminal after installing uv |
+| `ERROR: BT not ready` | System Settings → Privacy → Bluetooth → allow your terminal |
+| `sniff_cachito.py` shows nothing | Cachito must be actively sending — tap vibrate buttons, don't just open the app |
+| Toy doesn't respond to `control_venus.py` | Check DEVICE_ID matches in both `ble_worker.py` and `control_venus.py` |
+| Claude: "no tools available" | Both `server.py` and `cloudflared` must be running; URL must end with `/mcp` |
+| OpenClaw: `connection refused` | Make sure `server.py` is running; Docker uses `host.docker.internal`, native uses `localhost` |
 
 ---
 
-## Protocol Reference
+## Project Structure
 
 ```
-Byte  0    : 0x71  — protocol header
-Byte  1    : 0x00
-Byte  2    : 0x01  — device type (0x01 = Venus)
-Byte  3    : 0xRR  — random sequence byte (0x64–0xFF)
-Bytes 4–5  : 0x04 0x00  — command code
-Bytes 6–7  : 0xDD 0xDD  — device pairing ID (####)
-Bytes 8–9  : param1 — 0x04 0x0a (vibrate) / 0x06 0x01 (stop)
-Byte  10   : 0xII  — intensity (0x00–0x64 = 0–100%)
-Bytes 11–14: 0x00 × 4  — padding
-Byte  15   : checksum = sum(bytes 0–14) mod 256
+toybridge/
+├── 1-discover/              # Find your device in BLE scan
+│   ├── realtime_scan.py     # Real-time BLE listener
+│   ├── scan_device.py       # Differential scan (on vs off)
+│   └── auto_explore.py      # Auto-connect and explore top signals
+├── 2-reverse/               # Reverse-engineer the protocol
+│   ├── connect_venus.py     # Connect and dump GATT services
+│   ├── explore_venus.py     # Explore + write test all characteristics
+│   ├── hold_venus.py        # Occupy connection to verify identity
+│   ├── bruteforce_test.py   # Brute-force common command formats
+│   ├── replay_test.py       # Replay captured auth + control sequences
+│   ├── test_auth.py         # Try auth token unlock
+│   ├── parse_pklg.py        # Parse Apple BLE packet captures
+│   └── analyze_protocol.py  # Analyze captured command patterns
+├── 3-control/               # Local control (after cracking protocol)
+│   ├── sniff_cachito.py     # Capture Cachito commands to get device ID
+│   └── control_venus.py     # CLI: vibrate, stop, demo
+├── 4-bridge/                # AI integration
+│   ├── server.py            # MCP + REST server (port 8888)
+│   ├── ble_worker.py        # BLE advertiser subprocess
+│   └── clawhub-skill/       # OpenClaw skills
+│       ├── venus-ble-vibrator/
+│       └── intiface-control/
+└── docs/
+    └── protocol.md          # Full Cachito protocol documentation
 ```
-
-Checksum example:
-```
-71 00 01 82 04 00 cb c5 04 0a 37 00 00 00 00
-sum = 0x2CD  →  checksum = 0xCD  ✓
-```
-
----
-
-## Architecture Notes
-
-**Why BLE advertising instead of GATT?** Discovered via APK reverse engineering — `BleAdvertiser.java` uses `addServiceUuid()` to broadcast commands. The toy never exposes a writable GATT characteristic for control.
-
-**Why a subprocess for BLE?** CoreBluetooth on macOS requires callbacks on the main thread. Since uvicorn occupies the main thread, `ble_worker.py` runs as a separate process with its own `NSRunLoop`.
-
-**Why Cloudflare Tunnel (for Claude)?** claude.ai Custom Connectors require a public HTTPS endpoint. Cloudflare Tunnel exposes the local server without port forwarding.
-
----
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `sniff_cachito.py` | Capture Cachito BLE commands from your phone |
-| `control_venus.py` | CLI tool for direct local control (testing) |
-| `ble_worker.py` | BLE advertiser subprocess |
-| `server.py` | MCP + REST server (port 8888) |
-| `clawhub-skill/venus-ble-vibrator/` | OpenClaw skill |
 
 ---
 

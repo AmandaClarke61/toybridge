@@ -43,7 +43,7 @@ This is the most important step. Every Cachito controller has a unique 4-hex pai
 2. On your Mac, run:
 
 ```bash
-uv run sniff_cachito.py
+uv run 3-control/sniff_cachito.py
 ```
 
 3. In the Cachito app, tap any vibration button
@@ -58,7 +58,7 @@ uv run sniff_cachito.py
 
 ### Step 3 — Set your DEVICE_ID
 
-Open `ble_worker.py` and edit line 14:
+Open `4-bridge/ble_worker.py` and edit line 14:
 
 ```python
 DEVICE_ID = "cbc5"   # ← replace with your value from Step 2
@@ -70,10 +70,10 @@ macOS requires explicit Bluetooth access. On first run it will prompt you — cl
 
 ### Step 5 — Start the server
 
-> The server binds to `localhost` only and makes no external network requests. You can review the full source at [server.py](https://github.com/AmandaClarke61/toybridge/blob/main/server.py) and [ble_worker.py](https://github.com/AmandaClarke61/toybridge/blob/main/ble_worker.py) before running.
+> The server binds to `localhost` only and makes no external network requests. You can review the full source at [server.py](https://github.com/AmandaClarke61/toybridge/blob/main/4-bridge/server.py) and [ble_worker.py](https://github.com/AmandaClarke61/toybridge/blob/main/4-bridge/ble_worker.py) before running.
 
 ```bash
-uv run server.py
+uv run 4-bridge/server.py
 ```
 
 You should see:

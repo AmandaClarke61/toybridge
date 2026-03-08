@@ -1,7 +1,7 @@
 [project]
-name = "claudetotoy"
+name = "toybridge"
 version = "0.1.0"
-description = "Control BLE intimate toys with Claude AI via MCP — reverse-engineered Cachito protocol"
+description = "Reverse-engineer any BLE toy's protocol, then control it with AI (Claude / OpenClaw)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
