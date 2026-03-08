@@ -262,8 +262,9 @@ toybridge/
 │   ├── server.py            # MCP + REST server (port 8888)
 │   ├── ble_worker.py        # BLE advertiser subprocess
 │   └── clawhub-skill/       # OpenClaw skills
-│       ├── venus-ble-vibrator/
-│       └── intiface-control/
+│       ├── toybridge/           # Generic — any device you've reverse-engineered
+│       ├── venus-ble-vibrator/  # Venus/Cachito specific
+│       └── intiface-control/    # Buttplug.io devices (no RE needed)
 └── docs/
     └── protocol.md          # Full Cachito protocol documentation
 ```

@@ -1,28 +1,26 @@
 ---
-name: venus-ble-vibrator
-description: Control a Venus (Cachito) BLE vibrator from natural language. Calls a local HTTP server that broadcasts BLE commands to the toy via macOS CoreBluetooth. Requires hardware setup — see the ToyBridge repo before installing.
+name: toybridge
+description: Control any BLE toy that has been reverse-engineered and connected via the ToyBridge server. Calls a local HTTP API to send vibrate/stop commands. Requires the ToyBridge server running on the same machine.
 metadata: {"openclaw": {"os": ["darwin"]}}
 ---
 
-# Venus BLE Vibrator Control
+# ToyBridge — Universal BLE Toy Control
 
-Control a **Venus / Cachito (小猫爪) BLE vibrator** using natural language through OpenClaw.
+Control **any BLE toy** through OpenClaw, as long as you have the [ToyBridge](https://github.com/AmandaClarke61/toybridge) server running.
 
-> This is a device-specific skill for Cachito-protocol toys. If your device is supported by [Buttplug.io](https://iostindex.com), use the `intiface-control` skill instead — no reverse-engineering needed.
+This skill is for devices that are **not supported by Buttplug.io/Intiface** — devices with proprietary or unknown protocols that you've reverse-engineered yourself using the ToyBridge toolkit.
 
-> **macOS only.** The server uses CoreBluetooth.
+> If your device IS supported by Buttplug.io, use the `intiface-control` skill instead — it's easier.
 
 ---
 
-## Setup
+## Prerequisites
 
-Follow the [ToyBridge setup guide](https://github.com/AmandaClarke61/toybridge) — complete Steps 1–3 (discover device ID, configure, verify locally), then start the server:
+1. You've reverse-engineered your device's BLE protocol using [ToyBridge](https://github.com/AmandaClarke61/toybridge)
+2. You've configured `4-bridge/ble_worker.py` for your device
+3. The ToyBridge server is running: `uv run 4-bridge/server.py`
 
-```bash
-uv run 4-bridge/server.py
-```
-
-Leave this terminal open. The server runs on **port 8888**.
+See the [full setup guide](https://github.com/AmandaClarke61/toybridge) for step-by-step instructions.
 
 ---
 
@@ -73,7 +71,13 @@ curl -s http://host.docker.internal:8888/status
 | `wave`  | Ramp up 20→100%, then back down, x2 |
 | `tease` | 30% → 70% → 100%, escalating, then stop |
 
-Example: *"Run the wave pattern"* or *"Give me a 30-second tease session"*
+To run a pattern:
+
+```bash
+curl -s -X POST http://host.docker.internal:8888/vibrate \
+  -H "Content-Type: application/json" \
+  -d '{"pattern": "wave"}'
+```
 
 ---
 
@@ -89,7 +93,6 @@ Example: *"Run the wave pattern"* or *"Give me a 30-second tease session"*
 
 | Problem | Fix |
 |---------|-----|
-| `BT not ready` error | Check Bluetooth is on, grant permission in System Settings → Privacy |
 | `connection refused` | Make sure `uv run 4-bridge/server.py` is running |
-| Device doesn't respond | Double-check `DEVICE_ID` in `4-bridge/ble_worker.py` matches your Cachito controller |
+| Device doesn't respond | Check your device config in `ble_worker.py` |
 | Wrong intensity | Values are clamped to 0–100 |
