@@ -21,7 +21,7 @@ Control a **Venus / Cachito BLE vibrator** using natural language through OpenCl
 
 **Software:**
 - Python 3.12+ with [`uv`](https://docs.astral.sh/uv/getting-started/installation/)
-- The bridge server: **[YOUR_REPO_URL]** ← replace with your GitHub repo after forking
+- The bridge server: **[github.com/AmandaClarke61/toybridge](https://github.com/AmandaClarke61/toybridge)**
 
 ---
 
@@ -30,7 +30,7 @@ Control a **Venus / Cachito BLE vibrator** using natural language through OpenCl
 ### Step 1 — Get the code
 
 ```bash
-git clone YOUR_REPO_URL venus-ble
+git clone https://github.com/AmandaClarke61/toybridge venus-ble
 cd venus-ble
 uv sync
 ```
@@ -69,6 +69,8 @@ DEVICE_ID = "cbc5"   # ← replace with your value from Step 2
 macOS requires explicit Bluetooth access. On first run it will prompt you — click Allow.
 
 ### Step 5 — Start the server
+
+> The server binds to `localhost` only and makes no external network requests. You can review the full source at [server.py](https://github.com/AmandaClarke61/toybridge/blob/main/server.py) and [ble_worker.py](https://github.com/AmandaClarke61/toybridge/blob/main/ble_worker.py) before running.
 
 ```bash
 uv run server.py

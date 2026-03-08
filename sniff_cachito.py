@@ -48,8 +48,8 @@ def detection_callback(device: BLEDevice, advertisement_data: AdvertisementData)
 
 def parse_uuid_command(uuid: str):
     """Parse a 7100xxxx UUID command and extract fields."""
-    # Format: 710003CC-8200-A3F7-0100-640000FF02xx
-    # Field:  [type+rnd][cmd ][####][par][  params   ]
+    # Format: 710001RR-0400-DDDD-PPPP-II0000000000CS
+    # Field:  hdr+type+rnd  cmd  ####  param1  intensity  padding  checksum
     parts = uuid.split("-")
     if len(parts) != 5:
         print(f"  (unexpected format: {len(parts)} parts)")

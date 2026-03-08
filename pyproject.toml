@@ -1,7 +1,7 @@
 [project]
 name = "claudetotoy"
 version = "0.1.0"
-description = "Add your description here"
+description = "Control BLE intimate toys with Claude AI via MCP — reverse-engineered Cachito protocol"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
